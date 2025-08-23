@@ -35,6 +35,19 @@ AUTH_SECRET     | authentication secret for Mikrotik API
 
 You can find details about the Megalert API's endpoints, request and response bodies etc. on this repository's [wiki](https://github.com/megabitus98/megalert/wiki).
 
+## API Docs
+
+Megalert exposes interactive API documentation via Swagger UI powered by Flasgger.
+
+- While running locally: open http://localhost:5000/apidocs
+- When using Docker (from the example below with `-p 5000:5000`): open http://localhost:5000/apidocs
+
+Notes:
+- The docs reflect the Flask-RESTful resources and are defined via YAML docstrings on the handlers.
+- Endpoints documented:
+  - GET /api/v1/sms — list SMS (optional query param `number`)
+  - POST /api/v1/sms — send SMS (query params `number`, `body`, `secret`)
+  - POST /api/v1/sms/webhook — send SMS via webhook (JSON field `msg`, header `phone`, `Authorization` header or JSON `secret`)
 ## Features
 
 * Send SMS messages

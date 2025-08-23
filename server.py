@@ -2,6 +2,7 @@
 from flask                      import Flask
 from routeros_api               import RouterOsApiPool
 from flask_restful              import Api
+from flasgger                   import Swagger
 
 # in-project dependencies
 from helpers.environment        import MEGALERT_HOST
@@ -26,6 +27,7 @@ mikrotik_connection = RouterOsApiPool(
 # initialize Flask and Flask-RESTful
 flask = Flask(__name__)
 api = Api(flask)
+swagger = Swagger(flask)
 
 # initialize route handler
 SMSResolver.init(api, mikrotik_connection)
