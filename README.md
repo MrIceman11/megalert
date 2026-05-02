@@ -7,14 +7,14 @@ Supports **Checkmk**, **Home Assistant**, **Uptime Kuma**, and any HTTP client.
 
 ## Quick Start
 
-### Docker (empfohlen)
+### Docker (recommended)
 
 ```bash
 docker run -d -p 5000:5000 \
   -e MIKROTIK_HOST=192.168.10.2 \
-  -e MIKROTIK_USER=sms-api \
-  -e MIKROTIK_PASS=geheim \
-  -e API_TOKEN=dein-token \
+  -e MIKROTIK_USER=<routeros-username> \
+  -e MIKROTIK_PASS=<routeros-password> \
+  -e API_TOKEN=<generate-with-openssl-rand-hex-32> \
   megabitus/megalert
 ```
 
@@ -22,15 +22,15 @@ docker run -d -p 5000:5000 \
 
 ```bash
 cp .env.sample .env
-# .env anpassen
+# edit .env with your values
 docker compose up -d
 ```
 
-### Lokal
+### Local
 
 ```bash
 cp .env.sample .env
-# .env anpassen
+# edit .env with your values
 pip3 install -r requirements.txt
 python3 server.py
 ```
@@ -39,20 +39,22 @@ python3 server.py
 
 ## Environment Variables
 
-| Variable | Pflicht | Default | Beschreibung |
+The gateway exits at startup if `MIKROTIK_HOST`, `MIKROTIK_USER`, `MIKROTIK_PASS`, or `API_TOKEN` are unset.
+
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `MIKROTIK_HOST` | ✅ | — | IP-Adresse des MikroTik Routers |
-| `MIKROTIK_USER` | ✅ | — | RouterOS Benutzername |
-| `MIKROTIK_PASS` | ✅ | — | RouterOS Passwort |
-| `API_TOKEN` | ✅ | — | Bearer Token für die API (`Authorization: Bearer <token>`) |
-| `MIKROTIK_PORT` | | `8728` | RouterOS API Port |
-| `MIKROTIK_SMS_PORT` | | `lte1` | LTE Interface für SMS-Versand |
-| `MEGALERT_HOST` | | `0.0.0.0` | Bind-Adresse der API |
-| `MEGALERT_PORT` | | `5000` | Port der API |
-| `MEGALERT_DEBUG` | | `false` | Debug-Logging aktivieren |
-| `ALLOWED_COUNTRY_CODES` | | *(alle)* | Erlaubte Ländervorwahlen, kommagetrennt (z.B. `49,43`) |
-| `MAX_MESSAGE_LENGTH` | | `480` | Maximale Nachrichtenlänge in Zeichen |
-| `RATE_LIMIT_PER_MINUTE` | | `10` | Maximale SMS pro Minute |
+| `MIKROTIK_HOST` | ✅ | — | IP address of the MikroTik router |
+| `MIKROTIK_USER` | ✅ | — | RouterOS username |
+| `MIKROTIK_PASS` | ✅ | — | RouterOS password |
+| `API_TOKEN` | ✅ | — | Bearer token for the API (`Authorization: Bearer <token>`) |
+| `MIKROTIK_PORT` | | `8728` | RouterOS API port |
+| `MIKROTIK_SMS_PORT` | | *(MikroTik default)* | LTE interface for outgoing SMS (e.g. `lte1`). Leave empty to let MikroTik pick its default interface. |
+| `MEGALERT_HOST` | | `0.0.0.0` | API bind address |
+| `MEGALERT_PORT` | | `5000` | API port |
+| `MEGALERT_DEBUG` | | `false` | Enable debug logging |
+| `ALLOWED_COUNTRY_CODES` | | *(all)* | Allowed country calling codes, comma-separated (e.g. `49,43`) |
+| `MAX_MESSAGE_LENGTH` | | `480` | Maximum message length in characters |
+| `RATE_LIMIT_PER_MINUTE` | | `10` | Maximum SMS per minute (per Gunicorn worker) |
 
 ---
 
@@ -60,9 +62,9 @@ python3 server.py
 
 Swagger UI: **http://localhost:5000/apidocs**
 
-### Authentifizierung
+### Authentication
 
-Alle Endpoints (außer `/health`) erfordern einen Bearer Token im Header:
+All endpoints (except `/health`) require a Bearer token in the header:
 
 ```
 Authorization: Bearer <API_TOKEN>
@@ -70,22 +72,22 @@ Authorization: Bearer <API_TOKEN>
 
 ### Endpoints
 
-#### `POST /api/v1/sms/send` — SMS senden *(primärer Endpoint)*
+#### `POST /api/v1/sms/send` — Send SMS *(primary endpoint)*
 
 ```bash
 curl -X POST http://localhost:5000/api/v1/sms/send \
-  -H "Authorization: Bearer dein-token" \
+  -H "Authorization: Bearer <your-token>" \
   -H "Content-Type: application/json" \
   -d '{"phone": "+491631272782", "message": "Host DOWN!", "source": "checkmk"}'
 ```
 
-**Request Body:**
+**Request body:**
 
-| Feld | Pflicht | Beschreibung |
+| Field | Required | Description |
 |---|---|---|
-| `phone` | ✅ | Telefonnummer im E.164-Format (z.B. `+491631272782`) |
-| `message` | ✅ | Nachrichtentext |
-| `source` | | Absender-Bezeichnung für Logging (z.B. `checkmk`) |
+| `phone` | ✅ | Phone number in E.164 format (e.g. `+491631272782`) |
+| `message` | ✅ | Message text |
+| `source` | | Sender label for logging (e.g. `checkmk`) |
 
 **Response `200`:**
 ```json
@@ -97,16 +99,16 @@ curl -X POST http://localhost:5000/api/v1/sms/send \
 }
 ```
 
-**Fehlercodes:**
+**Error codes:**
 
-| Code | Bedeutung |
+| Code | Meaning |
 |---|---|
-| `400` | Fehlende oder ungültige Felder |
-| `401` | Kein oder falscher Bearer Token |
-| `403` | Ländervorwahl nicht erlaubt |
-| `429` | Rate Limit überschritten |
-| `500` | SMS-Zustellung fehlgeschlagen (Modem-Fehler) |
-| `503` | MikroTik nicht erreichbar |
+| `400` | Missing or invalid fields |
+| `401` | Missing or invalid Bearer token |
+| `403` | Country code not allowed |
+| `429` | Rate limit exceeded |
+| `500` | SMS delivery failed (modem error) |
+| `503` | MikroTik unreachable |
 
 ---
 
@@ -123,7 +125,7 @@ curl http://localhost:5000/health
 
 ```bash
 curl -X POST http://localhost:5000/api/v1/sms/webhook \
-  -H "Authorization: Bearer dein-token" \
+  -H "Authorization: Bearer <your-token>" \
   -H "phone: +491631272782" \
   -H "Content-Type: application/json" \
   -d '{"msg": "Service DOWN"}'
@@ -133,33 +135,32 @@ curl -X POST http://localhost:5000/api/v1/sms/webhook \
 
 #### `POST /api/v1/sms` *(deprecated)* / `GET /api/v1/sms`
 
-Legacy-Endpoints, die noch funktionieren aber nicht mehr empfohlen werden.  
-`GET /api/v1/sms` liest den SMS-Eingang des MikroTik (muss in RouterOS aktiviert sein: `/tool sms set receive-enabled=yes`).
+Legacy endpoints that still work but are no longer recommended.  
+`GET /api/v1/sms` reads the MikroTik SMS inbox (must be enabled in RouterOS: `/tool sms set receive-enabled=yes`).
 
 ---
 
 ## Checkmk Integration
 
-Script unter [checkmk-notify-sms.sh](checkmk-notify-sms.sh) liegt bereits im Repo.
+The notification script is at [checkmk-notify-sms.sh](checkmk-notify-sms.sh).
 
 **Setup:**
 
 ```bash
-# Script auf den Checkmk-Server kopieren
 cp checkmk-notify-sms.sh /omd/sites/<site>/local/share/check_mk/notifications/notify-sms
 chmod +x /omd/sites/<site>/local/share/check_mk/notifications/notify-sms
 ```
 
-**Umgebungsvariablen auf dem Checkmk-Server setzen:**
+**Set environment variables on the Checkmk server:**
 
 ```bash
 export SMS_GATEWAY_URL=http://192.168.10.10:5000
-export SMS_API_TOKEN=dein-token
+export SMS_API_TOKEN=<your-api-token>
 ```
 
 **Checkmk Notification Rule:**
 - Notification method: `notify-sms`
-- Contact → Pager address: Telefonnummer im E.164-Format (z.B. `+491631272782`)
+- Contact → Pager address: phone number in E.164 format (e.g. `+491631272782`)
 
 ---
 
@@ -172,29 +173,29 @@ rest_command:
     url: "http://192.168.10.10:5000/api/v1/sms/send"
     method: POST
     headers:
-      Authorization: "Bearer dein-token"
+      Authorization: "Bearer <your-token>"
       Content-Type: application/json
     payload: '{"phone": "{{ phone }}", "message": "{{ message }}", "source": "home-assistant"}'
 ```
 
-**Automation Beispiel:**
+**Automation example:**
 
 ```yaml
 action:
   - service: rest_command.send_sms
     data:
       phone: "+491631272782"
-      message: "Türklingel betätigt!"
+      message: "Doorbell pressed!"
 ```
 
 ---
 
-## Sicherheitshinweise
+## Security Notes
 
-- `API_TOKEN` nie in die Versionskontrolle einchecken — `.env` ist in `.gitignore`
-- MikroTik-Benutzer mit minimalen Rechten anlegen (nur `/tool/sms` und `/log`)
-- `ALLOWED_COUNTRY_CODES` setzen um unerwünschte Empfänger zu blockieren
-- `RATE_LIMIT_PER_MINUTE` schützt vor Alarm-Stürmen
+- Never commit `API_TOKEN` to version control — `.env` is in `.gitignore`
+- Create a MikroTik user with minimal permissions (only `/tool/sms` and `/log`)
+- Set `ALLOWED_COUNTRY_CODES` to block unintended recipients
+- `RATE_LIMIT_PER_MINUTE` protects against alert storms (note: applies per Gunicorn worker)
 
 ---
 

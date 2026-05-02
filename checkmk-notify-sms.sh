@@ -42,10 +42,8 @@ else
     MESSAGE="${NOTIFICATIONTYPE}: ${HOSTNAME} is ${HOSTSTATE}"
 fi
 
-# Build JSON safely via printf to avoid issues with quotes or special chars in variables
-JSON_PAYLOAD=$(printf '{"phone":"%s","message":"%s","source":"checkmk"}' \
-    "$PHONE" \
-    "${MESSAGE//\"/\\\"}")
+JSON_PAYLOAD=$(jq -nc --arg phone "$PHONE" --arg msg "$MESSAGE" \
+    '{phone: $phone, message: $msg, source: "checkmk"}')
 
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
     --max-time 10 \

@@ -3,19 +3,21 @@ services:
     build: .
     ports:
       - "5000:5000"
+    env_file:
+      - .env
     environment:
-      MEGALERT_HOST: "0.0.0.0"
-      MEGALERT_PORT: "5000"
-      MEGALERT_DEBUG: "false"
-      MIKROTIK_HOST: "192.168.10.2"
-      MIKROTIK_PORT: "8728"
-      MIKROTIK_USER: "sms-api"
-      MIKROTIK_PASS: "secret"
-      MIKROTIK_SMS_PORT: "lte1"
-      API_TOKEN: "change-me"
-      ALLOWED_COUNTRY_CODES: "49"
-      MAX_MESSAGE_LENGTH: "480"
-      RATE_LIMIT_PER_MINUTE: "10"
+      MEGALERT_HOST: "${MEGALERT_HOST:-0.0.0.0}"
+      MEGALERT_PORT: "${MEGALERT_PORT:-5000}"
+      MEGALERT_DEBUG: "${MEGALERT_DEBUG:-false}"
+      MIKROTIK_HOST: "${MIKROTIK_HOST}"
+      MIKROTIK_PORT: "${MIKROTIK_PORT:-8728}"
+      MIKROTIK_USER: "${MIKROTIK_USER}"
+      MIKROTIK_PASS: "${MIKROTIK_PASS}"
+      MIKROTIK_SMS_PORT: "${MIKROTIK_SMS_PORT:-}"
+      API_TOKEN: "${API_TOKEN}"
+      ALLOWED_COUNTRY_CODES: "${ALLOWED_COUNTRY_CODES:-}"
+      MAX_MESSAGE_LENGTH: "${MAX_MESSAGE_LENGTH:-480}"
+      RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-10}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]

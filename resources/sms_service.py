@@ -6,7 +6,7 @@ from time import sleep
 
 from flask import request
 from flask_restful import reqparse
-from phonenumbers import carrier, parse
+from phonenumbers import PhoneNumberType, parse
 from phonenumbers.phonenumberutil import number_type
 
 from helpers.auth import is_authorized
@@ -72,7 +72,8 @@ def _mask_phone(phone: str) -> str:
 
 def valid_phone_number(phone: str) -> bool:
     try:
-        return carrier._is_mobile(number_type(parse(phone)))
+        nt = number_type(parse(phone))
+        return nt in (PhoneNumberType.MOBILE, PhoneNumberType.FIXED_LINE_OR_MOBILE)
     except Exception as exc:
         log.debug("phone validation failed for %r: %s", phone, exc)
         return False
@@ -115,22 +116,25 @@ def _send_via_mikrotik(mikrotik_connection, phone: str, message: str) -> bool:
     sms_resource = mikrotik_api.get_binary_resource('/tool/sms')
     parts = _split_message(message)
 
-    for part in parts:
-        _set_lte_logging(mikrotik_api, True)
-        sms_resource.call('send', {
-            'message': part.encode(),
-            'phone-number': phone.encode(),
-            'port': MIKROTIK_SMS_PORT.encode(),
-        })
-        sleep(2)
-        _set_lte_logging(mikrotik_api, False)
+    try:
+        for part in parts:
+            _set_lte_logging(mikrotik_api, True)
+            params = {
+                'message': part.encode(),
+                'phone-number': phone.encode(),
+            }
+            if MIKROTIK_SMS_PORT:
+                params['port'] = MIKROTIK_SMS_PORT.encode()
+            sms_resource.call('send', params)
+            sleep(2)
+            _set_lte_logging(mikrotik_api, False)
 
-        if not _is_sms_delivered(mikrotik_api):
-            mikrotik_connection.disconnect()
-            return False
+            if not _is_sms_delivered(mikrotik_api):
+                return False
 
-    mikrotik_connection.disconnect()
-    return True
+        return True
+    finally:
+        mikrotik_connection.disconnect()
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +237,10 @@ class SMSService:
     # ------------------------------------------------------------------
     @staticmethod
     def get_sms():
+        if not is_authorized():
+            log.warning("get_sms | unauthorized request from %s", request.remote_addr)
+            return {'error': 'Unauthorized'}, 401
+
         parser = reqparse.RequestParser()
         parser.add_argument('number', type=str, required=False, location='args')
         args = parser.parse_args()
@@ -261,6 +269,10 @@ class SMSService:
         if not data:
             return {'error': 'Invalid JSON'}, 400
 
+        legacy_secret = data.get('secret')
+        if not is_authorized(legacy_secret=legacy_secret):
+            return {'error': 'Unauthorized'}, 401
+
         message, err = _validate_message(data.get('msg', ''))
         if err:
             return err
@@ -268,10 +280,6 @@ class SMSService:
         phone, err = _validate_phone(request.headers.get('phone', ''))
         if err:
             return err
-
-        legacy_secret = data.get('secret')
-        if not is_authorized(legacy_secret=legacy_secret):
-            return {'error': 'Unauthorized'}, 401
 
         if not check_rate_limit():
             return {'error': 'Rate limit exceeded'}, 429

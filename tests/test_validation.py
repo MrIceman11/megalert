@@ -1,9 +1,8 @@
 """Unit tests for phone validation, auth, and rate limiting."""
-import importlib
 import sys
 import types
 import unittest
-from unittest.mock import MagicMock, patch
+from flask import Flask as _Flask
 
 
 # ---------------------------------------------------------------------------
@@ -125,11 +124,12 @@ class TestBearerAuth(unittest.TestCase):
         for m in list(sys.modules):
             if 'helpers.auth' in m:
                 del sys.modules[m]
+        self._app = _Flask(__name__)
 
     def _auth(self, header='', legacy_secret=None):
         from helpers.auth import is_authorized
-        with patch('helpers.auth.request') as mock_req:
-            mock_req.headers.get.return_value = header
+        headers = {'Authorization': header} if header else {}
+        with self._app.test_request_context('/', headers=headers):
             return is_authorized(legacy_secret=legacy_secret)
 
     def test_valid_bearer(self):
