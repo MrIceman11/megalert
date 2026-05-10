@@ -1,4 +1,5 @@
 import logging
+import threading
 import uuid
 from datetime import datetime, timezone
 from math import ceil
@@ -110,31 +111,59 @@ def _validate_message(message: str):
 # Core SMS send logic
 # ---------------------------------------------------------------------------
 
+_CONNECT_RETRIES = 3
+_CONNECT_RETRY_DELAY = 5  # seconds between connection attempts
+_mikrotik_lock = threading.Lock()
+
+
 def _send_via_mikrotik(mikrotik_connection, phone: str, message: str) -> bool:
-    """Send one or more SMS parts via Mikrotik. Returns True on success."""
-    mikrotik_api = mikrotik_connection.get_api()
-    sms_resource = mikrotik_api.get_binary_resource('/tool/sms')
+    """Send SMS via Mikrotik — always fresh connect, serialized via lock.
+
+    Retries happen only during the connection phase. Once a send command
+    has been issued, no retry occurs to prevent duplicate SMS delivery.
+    Concurrent callers queue up behind the lock.
+    """
     parts = _split_message(message)
 
-    try:
-        for part in parts:
-            _set_lte_logging(mikrotik_api, True)
-            params = {
-                'message': part.encode(),
-                'phone-number': phone.encode(),
-            }
-            if MIKROTIK_SMS_PORT:
-                params['port'] = MIKROTIK_SMS_PORT.encode()
-            sms_resource.call('send', params)
-            sleep(2)
-            _set_lte_logging(mikrotik_api, False)
+    with _mikrotik_lock:
+        # --- connection phase: retry allowed ---
+        last_exc = None
+        mikrotik_api = None
+        for attempt in range(1, _CONNECT_RETRIES + 1):
+            mikrotik_connection.disconnect()
+            try:
+                mikrotik_api = mikrotik_connection.get_api()
+                mikrotik_api.get_binary_resource('/tool/sms')  # verify connection
+                break
+            except Exception as exc:
+                last_exc = exc
+                log.warning("send_via_mikrotik | connect attempt %d/%d failed: %s", attempt, _CONNECT_RETRIES, exc)
+                if attempt < _CONNECT_RETRIES:
+                    sleep(_CONNECT_RETRY_DELAY)
+        else:
+            raise last_exc
 
-            if not _is_sms_delivered(mikrotik_api):
-                return False
+        # --- send phase: no retry to avoid duplicate SMS ---
+        try:
+            sms_resource = mikrotik_api.get_binary_resource('/tool/sms')
+            for part in parts:
+                _set_lte_logging(mikrotik_api, True)
+                params = {
+                    'message': part.encode(),
+                    'phone-number': phone.encode(),
+                }
+                if MIKROTIK_SMS_PORT:
+                    params['port'] = MIKROTIK_SMS_PORT.encode()
+                sms_resource.call('send', params)
+                sleep(2)
+                _set_lte_logging(mikrotik_api, False)
 
-        return True
-    finally:
-        mikrotik_connection.disconnect()
+                if not _is_sms_delivered(mikrotik_api):
+                    return False
+
+            return True
+        finally:
+            mikrotik_connection.disconnect()
 
 
 # ---------------------------------------------------------------------------
